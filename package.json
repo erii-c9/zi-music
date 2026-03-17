@@ -1,0 +1,21 @@
+{
+  "name": "zi-music",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A minimal desktop music player powered by Bilibili search and audio playback.",
+  "author": "Codex",
+  "scripts": {
+    "dev": "npm run dev --prefix web",
+    "dev:web": "npm run dev --prefix web",
+    "dev:server": "npm run dev --prefix server",
+    "dev:app": "scripts\\tauri-run.cmd",
+    "build": "npm run build --prefix web",
+    "start": "npm run start --prefix server",
+    "install:all": "npm install --prefix server && npm install --prefix web",
+    "build:app": "scripts\\tauri-build.cmd",
+    "build:portable": "scripts\\tauri-build.cmd"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.5"
+  }
+}

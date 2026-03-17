@@ -1,0 +1,25 @@
+[package]
+name = "zi-music"
+version = "0.1.0"
+description = "A minimal desktop music player powered by Bilibili search and audio playback."
+authors = ["Codex"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+axum = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+futures-util = "0.3"
+md5 = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+tower-http = { version = "0.6", features = ["cors"] }
+urlencoding = "2"
+
+[features]
+default = []
