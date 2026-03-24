@@ -355,6 +355,9 @@ export default function App() {
     if (!query) return recentPlays;
     return recentPlays.filter((item) => `${item.title} ${item.uploader}`.toLowerCase().includes(query));
   }, [recentPlays, recentQuery]);
+  const timelineMax = duration || currentTrack?.durationSeconds || 0;
+  const timelineValue = Math.min(currentTime, timelineMax);
+  const timelineProgress = timelineMax > 0 ? `${(timelineValue / timelineMax) * 100}%` : "0%";
 
   useEffect(() => {
     if (!selectedGroupId && favoriteGroups[0]) setSelectedGroupId(favoriteGroups[0].id);
@@ -1189,9 +1192,10 @@ export default function App() {
             className="timeline-slider"
             type="range"
             min="0"
-            max={duration || currentTrack?.durationSeconds || 0}
+            max={timelineMax}
             step="1"
-            value={Math.min(currentTime, duration || currentTrack?.durationSeconds || 0)}
+            value={timelineValue}
+            style={{ "--timeline-progress": timelineProgress }}
             onChange={(event) => {
               const audio = audioRef.current;
               const nextTime = Number(event.target.value);

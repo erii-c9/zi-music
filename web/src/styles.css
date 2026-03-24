@@ -930,6 +930,9 @@ button {
   width: 42px;
   height: 42px;
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(15, 23, 42, 0.05);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.9);
@@ -988,6 +991,7 @@ button {
   width: 18px;
   height: 18px;
   display: block;
+  flex: 0 0 auto;
 }
 
 .mode-switch {
@@ -1012,6 +1016,9 @@ button {
   padding: 0 10px;
   border-radius: 14px;
   font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .timeline.stretch {
@@ -1078,6 +1085,26 @@ button {
   background: linear-gradient(90deg, rgba(17, 24, 39, 0.92), rgba(17, 24, 39, 0.16));
 }
 
+.timeline-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    90deg,
+    rgba(17, 24, 39, 0.72) 0,
+    rgba(17, 24, 39, 0.72) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.16) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.16) 100%
+  );
+}
+
+.timeline-slider::-moz-range-track {
+  background: linear-gradient(
+    90deg,
+    rgba(17, 24, 39, 0.72) 0,
+    rgba(17, 24, 39, 0.72) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.16) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.16) 100%
+  );
+}
+
 .timeline-slider::-moz-range-thumb,
 .vertical-slider::-moz-range-thumb {
   width: 18px;
@@ -1101,6 +1128,13 @@ button {
 .timeline.stretch:hover .timeline-slider::-webkit-slider-runnable-track,
 .timeline-slider:focus-visible::-webkit-slider-runnable-track {
   height: 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(17, 24, 39, 0.96) 0,
+    rgba(17, 24, 39, 0.96) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.22) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.22) 100%
+  );
 }
 
 .timeline-slider::-moz-range-thumb {
@@ -1116,6 +1150,13 @@ button {
 .timeline.stretch:hover .timeline-slider::-moz-range-track,
 .timeline-slider:focus-visible::-moz-range-track {
   height: 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(17, 24, 39, 0.96) 0,
+    rgba(17, 24, 39, 0.96) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.22) var(--timeline-progress, 0%),
+    rgba(17, 24, 39, 0.22) 100%
+  );
 }
 
 .player-tools {
