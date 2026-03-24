@@ -1,6 +1,6 @@
 [package]
 name = "zi-music"
-version = "0.1.0"
+version = "0.1.1"
 description = "A minimal desktop music player powered by Bilibili search and audio playback."
 authors = ["Codex"]
 edition = "2021"

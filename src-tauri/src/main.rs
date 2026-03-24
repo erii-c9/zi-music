@@ -98,6 +98,8 @@ struct SearchItem {
     duration_seconds: u64,
     #[serde(rename = "playCount")]
     play_count: u64,
+    #[serde(rename = "publishDate")]
+    publish_date: String,
     description: String,
 }
 
@@ -502,6 +504,7 @@ async fn search_videos(state: &AppState, query: &str, page: u32) -> Result<Searc
                 duration: format_seconds(duration_seconds),
                 duration_seconds,
                 play_count: item["play"].as_u64().unwrap_or_default(),
+                publish_date: format_publish_date(item["pubdate"].as_i64().unwrap_or_default()),
                 description: strip_html(item["description"].as_str().unwrap_or_default()),
             }
         })
@@ -575,6 +578,7 @@ async fn fetch_up_videos(state: &AppState, mid: u64, page: u32) -> Result<Search
                     .as_u64()
                     .or_else(|| item["play"].as_str().and_then(|value| value.parse::<u64>().ok()))
                     .unwrap_or_default(),
+                publish_date: format_publish_date(item["created"].as_i64().unwrap_or_default()),
                 description: strip_html(item["description"].as_str().unwrap_or_default()),
             }
         })
@@ -904,6 +908,16 @@ fn format_seconds(total_seconds: u64) -> String {
     } else {
         format!("{minutes:02}:{seconds:02}")
     }
+}
+
+fn format_publish_date(timestamp: i64) -> String {
+    if timestamp <= 0 {
+        return String::new();
+    }
+
+    chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0)
+        .map(|value| value.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
 }
 
 fn compute_page_count(total: usize, page_size: usize) -> u32 {
