@@ -314,7 +314,8 @@ export default function App() {
   const [searchError, setSearchError] = useState("");
   const [historyVisible, setHistoryVisible] = useState(false);
   const [searchHistory, setSearchHistory] = useState(getSearchHistory);
-  const [upView, setUpView] = useState({ mid: null, uploader: "", items: [], page: 1, hasMore: false, loading: false, error: "" });
+  const [upView, setUpView] = useState({ mid: null, uploader: "", items: [], page: 1, hasMore: false, loading: false, error: "", order: "pubdate" });
+  const [dynamicView, setDynamicView] = useState({ items: [], offset: "", hasMore: false, loading: false, error: "", initialized: false });
   const [favoriteGroups, setFavoriteGroupsState] = useState(getFavoriteGroups);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
@@ -390,6 +391,10 @@ export default function App() {
     }, 2500);
     return () => window.clearInterval(timer);
   }, [authState.qrKey, authState.loggedIn]);
+  useEffect(() => {
+    if (authState.loggedIn) return;
+    setDynamicView({ items: [], offset: "", hasMore: false, loading: false, error: "", initialized: false });
+  }, [authState.loggedIn]);
 
   function resetPlaybackPosition() {
     setCurrentTime(0);
@@ -532,11 +537,11 @@ export default function App() {
     if (!searchLoading && hasMoreSearch) await searchMusic(undefined, keyword, searchPage + 1, true);
   }
 
-  async function openUploader(mid, uploader, page = 1, append = false) {
+  async function openUploader(mid, uploader, page = 1, append = false, order = "pubdate") {
     if (!mid) return;
-    setUpView((current) => ({ ...current, mid, uploader, loading: true, error: "" }));
+    setUpView((current) => ({ ...current, mid, uploader, loading: true, error: "", order }));
     try {
-      const response = await fetch(apiUrl(`/api/up/${mid}/videos?page=${page}`));
+      const response = await fetch(apiUrl(`/api/up/${mid}/videos?page=${page}&order=${encodeURIComponent(order)}`));
       const payload = await readJsonSafely(response);
       if (!response.ok) throw new Error(payload?.detail || payload?.error || "加载 UP 投稿失败");
       if (!payload || !Array.isArray(payload.items)) throw new Error("UP 投稿接口返回了非预期数据");
@@ -548,7 +553,8 @@ export default function App() {
         page,
         hasMore: payload.items.length > 0 && page < (payload.pageCount || Number.MAX_SAFE_INTEGER),
         loading: false,
-        error: ""
+        error: "",
+        order
       }));
       setActiveTab("up");
     } catch (error) {
@@ -557,7 +563,45 @@ export default function App() {
   }
 
   async function loadMoreUpVideos() {
-    if (upView.mid && !upView.loading && upView.hasMore) await openUploader(upView.mid, upView.uploader, upView.page + 1, true);
+    if (upView.mid && !upView.loading && upView.hasMore) await openUploader(upView.mid, upView.uploader, upView.page + 1, true, upView.order);
+  }
+
+  async function loadDynamicFeed(nextOffset = "", append = false) {
+    if (!authState.loggedIn) {
+      setDynamicView((current) => ({ ...current, error: "请先在账号增强页登录后查看动态" }));
+      return;
+    }
+
+    setDynamicView((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const suffix = nextOffset ? `?offset=${encodeURIComponent(nextOffset)}` : "";
+      const response = await fetch(apiUrl(`/api/dynamics${suffix}`));
+      const payload = await readJsonSafely(response);
+      if (!response.ok) throw new Error(payload?.detail || payload?.error || "加载动态失败");
+      if (!payload || !Array.isArray(payload.items)) throw new Error("动态接口返回了非预期数据");
+      setDynamicView((current) => ({
+        items: append ? [...current.items, ...payload.items] : payload.items,
+        offset: payload.offset || "",
+        hasMore: Boolean(payload.hasMore),
+        loading: false,
+        error: "",
+        initialized: true
+      }));
+      setActiveTab("dynamic");
+    } catch (error) {
+      setDynamicView((current) => ({
+        ...current,
+        loading: false,
+        error: error.message || "加载动态失败",
+        initialized: true
+      }));
+    }
+  }
+
+  async function loadMoreDynamics() {
+    if (!dynamicView.loading && dynamicView.hasMore && dynamicView.offset) {
+      await loadDynamicFeed(dynamicView.offset, true);
+    }
   }
 
   async function playQueueIndex(index, nextQueue = queueItems) {
@@ -844,6 +888,19 @@ export default function App() {
           <button type="button" className={activeTab === "search" ? "active" : ""} onClick={() => setActiveTab("search")}>搜索</button>
           <button type="button" className={activeTab === "favorites" ? "active" : ""} onClick={() => setActiveTab("favorites")}>收藏夹</button>
           <button type="button" className={activeTab === "recent" ? "active" : ""} onClick={() => setActiveTab("recent")}>最近播放</button>
+          <button
+            type="button"
+            className={activeTab === "dynamic" ? "active" : ""}
+            onClick={() => {
+              if (!dynamicView.initialized && authState.loggedIn) {
+                void loadDynamicFeed();
+              } else {
+                setActiveTab("dynamic");
+              }
+            }}
+          >
+            我的动态
+          </button>
           <button type="button" className={activeTab === "settings" ? "active" : ""} onClick={() => setActiveTab("settings")}>设置</button>
           <button type="button" className={activeTab === "auth" ? "active" : ""} onClick={() => setActiveTab("auth")}>账号增强</button>
           {activeTab === "up" ? <button type="button" className="active">{upView.uploader || "UP 投稿"}</button> : null}
@@ -941,6 +998,38 @@ export default function App() {
           </section>
         ) : null}
 
+        {activeTab === "dynamic" ? (
+          <section className="panel page-panel">
+            <div className="page-head">
+              <div>
+                <p className="section-kicker">Following Feed</p>
+                <h2>我的动态</h2>
+              </div>
+              <div className="page-actions">
+                {authState.loggedIn ? (
+                  <button type="button" className="ghost-button small" onClick={() => void loadDynamicFeed()} disabled={dynamicView.loading}>
+                    {dynamicView.loading && !dynamicView.items.length ? "加载中..." : "刷新"}
+                  </button>
+                ) : (
+                  <button type="button" className="ghost-button small" onClick={() => setActiveTab("auth")}>去登录</button>
+                )}
+              </div>
+            </div>
+            {!authState.loggedIn ? (
+              <div className="message error">请先在“账号增强”页登录，才能查看你关注的 UP 主最新视频。</div>
+            ) : null}
+            {dynamicView.error ? <div className="message error">{dynamicView.error}</div> : null}
+            {authState.loggedIn ? renderCards(dynamicView.items) : null}
+            {authState.loggedIn && dynamicView.hasMore ? (
+              <div className="load-more-row">
+                <button type="button" className="load-more-button" onClick={loadMoreDynamics} disabled={dynamicView.loading}>
+                  {dynamicView.loading ? "加载中..." : "加载更多"}
+                </button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {activeTab === "settings" ? (
           <section className="panel page-panel settings-panel">
             <div className="page-head">
@@ -1009,7 +1098,27 @@ export default function App() {
                 <p className="section-kicker">Uploader Videos</p>
                 <h2>{upView.uploader || "UP 投稿"}</h2>
               </div>
-              <button type="button" className="ghost-button" onClick={() => setActiveTab("search")}>返回搜索</button>
+              <div className="page-actions">
+                <div className="inline-filters">
+                  <button
+                    type="button"
+                    className={`ghost-button small${upView.order === "pubdate" ? " active-chip" : ""}`}
+                    onClick={() => void openUploader(upView.mid, upView.uploader, 1, false, "pubdate")}
+                    disabled={upView.loading}
+                  >
+                    最新发布
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost-button small${upView.order === "click" ? " active-chip" : ""}`}
+                    onClick={() => void openUploader(upView.mid, upView.uploader, 1, false, "click")}
+                    disabled={upView.loading}
+                  >
+                    最多播放
+                  </button>
+                </div>
+                <button type="button" className="ghost-button small" onClick={() => setActiveTab("search")}>返回搜索</button>
+              </div>
             </div>
             {upView.error ? <div className="message error">{upView.error}</div> : null}
             {renderCards(upView.items)}

@@ -132,6 +132,20 @@ struct SearchParams {
 #[derive(Deserialize)]
 struct UpVideosParams {
     page: Option<u32>,
+    order: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DynamicFeedParams {
+    offset: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct DynamicFeedResponse {
+    items: Vec<SearchItem>,
+    #[serde(rename = "hasMore")]
+    has_more: bool,
+    offset: String,
 }
 
 #[derive(Deserialize)]
@@ -190,6 +204,14 @@ impl ApiError {
     fn bad_gateway(error: &'static str, detail: impl Into<String>) -> Self {
         Self {
             status: StatusCode::BAD_GATEWAY,
+            error,
+            detail: detail.into(),
+        }
+    }
+
+    fn unauthorized(error: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
             error,
             detail: detail.into(),
         }
@@ -256,6 +278,7 @@ async fn run_api_server(state: AppState) -> Result<(), Box<dyn std::error::Error
         .route("/api/auth/logout", get(logout))
         .route("/api/search", get(search))
         .route("/api/up/{mid}/videos", get(up_videos))
+        .route("/api/dynamics", get(dynamic_feed))
         .route("/api/tracks/{bvid}", get(track))
         .route("/api/stream/{bvid}", get(stream))
         .with_state(state)
@@ -442,7 +465,17 @@ async fn up_videos(
     Query(params): Query<UpVideosParams>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     let page = params.page.unwrap_or(1);
-    let result = fetch_up_videos(&state, mid, page).await?;
+    let order = params.order.unwrap_or_else(|| "pubdate".to_string());
+    let result = fetch_up_videos(&state, mid, page, &order).await?;
+    Ok(Json(result))
+}
+
+async fn dynamic_feed(
+    State(state): State<AppState>,
+    Query(params): Query<DynamicFeedParams>,
+) -> Result<Json<DynamicFeedResponse>, ApiError> {
+    let offset = params.offset.unwrap_or_default();
+    let result = fetch_dynamic_feed(&state, &offset).await?;
     Ok(Json(result))
 }
 
@@ -523,14 +556,23 @@ async fn search_videos(state: &AppState, query: &str, page: u32) -> Result<Searc
     })
 }
 
-async fn fetch_up_videos(state: &AppState, mid: u64, page: u32) -> Result<SearchResponse, ApiError> {
+async fn fetch_up_videos(
+    state: &AppState,
+    mid: u64,
+    page: u32,
+    order: &str,
+) -> Result<SearchResponse, ApiError> {
+    let normalized_order = match order {
+        "click" => "click",
+        _ => "pubdate",
+    };
     let (img_key, sub_key) = get_wbi_keys(state).await?;
     let signed_query = sign_wbi(
         vec![
             ("mid".to_string(), mid.to_string()),
             ("pn".to_string(), page.to_string()),
             ("ps".to_string(), "20".to_string()),
-            ("order".to_string(), "pubdate".to_string()),
+            ("order".to_string(), normalized_order.to_string()),
         ],
         &img_key,
         &sub_key,
@@ -594,6 +636,52 @@ async fn fetch_up_videos(state: &AppState, mid: u64, page: u32) -> Result<Search
         page_count: compute_page_count(total, page_size),
         total,
         items,
+    })
+}
+
+async fn fetch_dynamic_feed(
+    state: &AppState,
+    offset: &str,
+) -> Result<DynamicFeedResponse, ApiError> {
+    if state.auth_session.read().await.is_none() {
+        return Err(ApiError::unauthorized(
+            "Dynamic feed requires login",
+            "请先在账号增强页登录后再查看动态",
+        ));
+    }
+
+    let mut url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all?type=video"
+        .to_string();
+    if !offset.trim().is_empty() {
+        url.push_str("&offset=");
+        url.push_str(&urlencoding::encode(offset));
+    }
+
+    let payload = fetch_json(state, &url).await?;
+    if payload["code"].as_i64().unwrap_or(-1) != 0 {
+        let detail = payload["message"]
+            .as_str()
+            .unwrap_or("加载动态失败")
+            .to_string();
+        if payload["code"].as_i64().unwrap_or_default() == -101 {
+            return Err(ApiError::unauthorized("Dynamic feed requires login", detail));
+        }
+        return Err(ApiError::bad_gateway("Dynamic feed failed", detail));
+    }
+
+    let data = &payload["data"];
+    let items = data["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|item| parse_dynamic_item(&item))
+        .collect::<Vec<_>>();
+
+    Ok(DynamicFeedResponse {
+        items,
+        has_more: data["has_more"].as_bool().unwrap_or(false),
+        offset: data["offset"].as_str().unwrap_or_default().to_string(),
     })
 }
 
@@ -918,6 +1006,80 @@ fn format_publish_date(timestamp: i64) -> String {
     chrono::DateTime::<chrono::Utc>::from_timestamp(timestamp, 0)
         .map(|value| value.format("%Y-%m-%d").to_string())
         .unwrap_or_default()
+}
+
+fn parse_dynamic_item(item: &Value) -> Option<SearchItem> {
+    let archive = &item["modules"]["module_dynamic"]["major"]["archive"];
+    if !archive.is_object() {
+        return None;
+    }
+
+    let bvid = archive["bvid"].as_str()?.to_string();
+    let aid = archive["aid"]
+        .as_u64()
+        .or_else(|| archive["aid"].as_str().and_then(|value| value.parse::<u64>().ok()))
+        .unwrap_or_default();
+    let mid = item["modules"]["module_author"]["mid"]
+        .as_u64()
+        .or_else(|| {
+            item["modules"]["module_author"]["mid"]
+                .as_str()
+                .and_then(|value| value.parse::<u64>().ok())
+        })
+        .unwrap_or_default();
+    let duration_seconds = archive["duration"]
+        .as_u64()
+        .or_else(|| archive["duration_text"].as_str().map(parse_duration_to_seconds))
+        .unwrap_or_default();
+    let play_count = archive["stat"]["play"]
+        .as_u64()
+        .or_else(|| {
+            archive["stat"]["play"]
+                .as_str()
+                .map(parse_play_count)
+        })
+        .unwrap_or_default();
+
+    Some(SearchItem {
+        id: bvid.clone(),
+        bvid,
+        aid,
+        mid,
+        title: strip_html(archive["title"].as_str().unwrap_or_default()),
+        uploader: item["modules"]["module_author"]["name"]
+            .as_str()
+            .unwrap_or("未知 UP 主")
+            .to_string(),
+        duration: archive["duration_text"]
+            .as_str()
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| format_seconds(duration_seconds)),
+        duration_seconds,
+        play_count,
+        publish_date: format_publish_date(
+            item["modules"]["module_author"]["pub_ts"]
+                .as_i64()
+                .unwrap_or_default(),
+        ),
+        description: strip_html(archive["desc"].as_str().unwrap_or_default()),
+    })
+}
+
+fn parse_play_count(value: &str) -> u64 {
+    let normalized = value.trim().replace(',', "");
+    if normalized.is_empty() {
+        return 0;
+    }
+
+    if let Some(raw) = normalized.strip_suffix('万') {
+        return (raw.parse::<f64>().unwrap_or_default() * 10_000.0) as u64;
+    }
+
+    if let Some(raw) = normalized.strip_suffix('亿') {
+        return (raw.parse::<f64>().unwrap_or_default() * 100_000_000.0) as u64;
+    }
+
+    normalized.parse::<u64>().unwrap_or_default()
 }
 
 fn compute_page_count(total: usize, page_size: usize) -> u32 {

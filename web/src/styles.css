@@ -245,6 +245,14 @@ button {
   margin-bottom: 20px;
 }
 
+.page-actions,
+.inline-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .page-head h2 {
   font-size: 24px;
   font-weight: 650;
@@ -777,6 +785,12 @@ button {
 .ghost-button.small {
   min-height: 32px;
   padding: 0 10px;
+}
+
+.ghost-button.active-chip {
+  background: rgba(17, 24, 39, 0.96);
+  color: #fff;
+  border-color: rgba(17, 24, 39, 0.96);
 }
 
 .load-more-row {
@@ -1432,6 +1446,11 @@ button {
   .search-bar,
   .favorite-group-creator.wide {
     grid-template-columns: 1fr;
+  }
+
+  .page-head,
+  .page-actions {
+    align-items: flex-start;
   }
 
   .card-grid {
