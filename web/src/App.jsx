@@ -129,11 +129,11 @@ function ResultCard({ item, onPlay, onQueueNext, onFavorite, onOpenUploader }) {
         </p>
       </button>
       <div className="card-actions multi">
-        <button type="button" className="ghost-button" onClick={onQueueNext}>
-          下一个播放
+        <button type="button" className="icon-action-button" data-tooltip="下一首播放" aria-label="下一首播放" onClick={onQueueNext}>
+          <QueueAddIcon />
         </button>
-        <button type="button" className="ghost-button" onClick={onFavorite}>
-          收藏
+        <button type="button" className="icon-action-button" data-tooltip="收藏" aria-label="收藏" onClick={onFavorite}>
+          <HeartIcon />
         </button>
       </div>
     </article>
@@ -187,6 +187,23 @@ function QueueIcon() {
   return (
     <PlayerIcon>
       <path d="M6 8h12M6 12h12M6 16h8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </PlayerIcon>
+  );
+}
+
+function QueueAddIcon() {
+  return (
+    <PlayerIcon>
+      <path d="M5.5 8h7.5M5.5 12h7.5M5.5 16h5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M17 10v6M14 13h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </PlayerIcon>
+  );
+}
+
+function HeartIcon() {
+  return (
+    <PlayerIcon>
+      <path d="M12 18.2 5.8 12.4a3.9 3.9 0 0 1 5.5-5.5L12 7.6l.7-.7a3.9 3.9 0 1 1 5.5 5.5L12 18.2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </PlayerIcon>
   );
 }
@@ -302,8 +319,12 @@ export default function App() {
   const audioRef = useRef(null);
   const historyRef = useRef(null);
   const playerToolsRef = useRef(null);
+  const searchLoadMoreRef = useRef(null);
+  const upLoadMoreRef = useRef(null);
+  const dynamicLoadMoreRef = useRef(null);
   const playRequestRef = useRef(0);
   const dragIndexRef = useRef(-1);
+  const toastTimerRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState("search");
   const [keyword, setKeyword] = useState(DEFAULT_SEARCH);
@@ -349,6 +370,7 @@ export default function App() {
   const [backgroundImage, setBackgroundImage] = useState(getStoredBackgroundImage);
   const [playerError, setPlayerError] = useState("");
   const [activePlayerTool, setActivePlayerTool] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
 
   const selectedGroup = favoriteGroups.find((group) => group.id === selectedGroupId) || favoriteGroups[0] || null;
   const recentFiltered = useMemo(() => {
@@ -395,10 +417,68 @@ export default function App() {
     if (authState.loggedIn) return;
     setDynamicView({ items: [], offset: "", hasMore: false, loading: false, error: "", initialized: false });
   }, [authState.loggedIn]);
+  useEffect(() => {
+    if (!activePlayerTool) return undefined;
+
+    function handleGlobalWheel(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (activePlayerTool === "speed") {
+        updatePlaybackRate(playbackRate + (event.deltaY < 0 ? 0.1 : -0.1));
+        return;
+      }
+      setVolume((current) => clamp(Number((current + (event.deltaY < 0 ? 0.02 : -0.02)).toFixed(2)), 0, 1));
+    }
+
+    window.addEventListener("wheel", handleGlobalWheel, { passive: false });
+    return () => window.removeEventListener("wheel", handleGlobalWheel);
+  }, [activePlayerTool, playbackRate]);
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    },
+    []
+  );
+  useEffect(() => {
+    if (activeTab !== "search" || !hasMoreSearch) return undefined;
+    const node = searchLoadMoreRef.current;
+    if (!node) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !searchLoading) void loadMoreSearch();
+    }, { rootMargin: "240px 0px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [activeTab, hasMoreSearch, searchLoading, searchPage, keyword]);
+  useEffect(() => {
+    if (activeTab !== "up" || !upView.hasMore) return undefined;
+    const node = upLoadMoreRef.current;
+    if (!node) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !upView.loading) void loadMoreUpVideos();
+    }, { rootMargin: "240px 0px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [activeTab, upView.hasMore, upView.loading, upView.page, upView.mid, upView.order]);
+  useEffect(() => {
+    if (activeTab !== "dynamic" || !dynamicView.hasMore) return undefined;
+    const node = dynamicLoadMoreRef.current;
+    if (!node) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && !dynamicView.loading) void loadMoreDynamics();
+    }, { rootMargin: "240px 0px" });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [activeTab, dynamicView.hasMore, dynamicView.loading, dynamicView.offset]);
 
   function resetPlaybackPosition() {
     setCurrentTime(0);
     setDuration(0);
+  }
+
+  function showToast(message) {
+    setToastMessage(message);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToastMessage(""), 2200);
   }
 
   async function refreshAuthStatus() {
@@ -489,6 +569,16 @@ export default function App() {
     if (audioRef.current) {
       audioRef.current.playbackRate = safe;
     }
+  }
+
+  function handleToolWheel(type, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (type === "speed") {
+      updatePlaybackRate(playbackRate + (event.deltaY < 0 ? 0.1 : -0.1));
+      return;
+    }
+    setVolume((current) => clamp(Number((current + (event.deltaY < 0 ? 0.02 : -0.02)).toFixed(2)), 0, 1));
   }
 
   function updateFontSize(nextValue) {
@@ -648,7 +738,7 @@ export default function App() {
     if (currentTrack) {
       setQueueIndex(nextQueue.findIndex((entry) => entry.bvid === currentTrack.bvid));
     }
-    setFavoriteMessage(`已加入播放列表：${item.title}`);
+    showToast(`已加入下一首播放：${item.title}`);
   }
 
   function playPrevious() {
@@ -688,7 +778,7 @@ export default function App() {
     setFavoriteGroupsState((current) => [nextGroup, ...current]);
     setSelectedGroupId(nextGroup.id);
     setNewGroupName("");
-    setFavoriteMessage(`已创建收藏夹：${name}`);
+    showToast(`已创建收藏夹：${name}`);
   }
 
   function openFavoritePicker(item) {
@@ -702,7 +792,7 @@ export default function App() {
   function addToFavorites(item, groupId = selectedGroupId) {
     const target = favoriteGroups.find((group) => group.id === groupId) || favoriteGroups[0];
     if (!target) {
-      setFavoriteMessage("请先创建一个收藏夹");
+      showToast("请先创建一个收藏夹");
       return false;
     }
     let added = false;
@@ -714,7 +804,7 @@ export default function App() {
         return { ...group, tracks: [createStoredTrack(item), ...group.tracks], updatedAt: new Date().toISOString() };
       })
     );
-    setFavoriteMessage(added ? `已加入 ${target.name}` : `${target.name} 里已经有这首歌`);
+    showToast(added ? `已加入 ${target.name}` : `${target.name} 里已经有这首歌`);
     return added;
   }
 
@@ -724,7 +814,7 @@ export default function App() {
     const nextGroup = createGroup(name);
     setFavoriteGroupsState((current) => [{ ...nextGroup, tracks: [createStoredTrack(favoritePicker.item)] }, ...current]);
     setSelectedGroupId(nextGroup.id);
-    setFavoriteMessage(`已加入新收藏夹：${name}`);
+    showToast(`已加入新收藏夹：${name}`);
     closeFavoritePicker();
   }
 
@@ -774,6 +864,19 @@ export default function App() {
     setQueueIndex(-1);
     setIsPlaying(false);
     resetPlaybackPosition();
+  }
+
+  function clearQueue() {
+    if (!queueItems.length) return;
+    if (currentTrack) {
+      setQueueItems([currentTrack]);
+      setQueueIndex(0);
+      showToast("已清空其余播放列表");
+      return;
+    }
+    setQueueItems([]);
+    setQueueIndex(-1);
+    showToast("播放列表已清空");
   }
 
   useEffect(() => {
@@ -847,8 +950,8 @@ export default function App() {
                 </p>
               </button>
               <div className="card-actions multi">
-                <button type="button" className="ghost-button" onClick={() => queueNext(item)}>
-                  下一个播放
+                <button type="button" className="icon-action-button" data-tooltip="下一首播放" aria-label="下一首播放" onClick={() => queueNext(item)}>
+                  <QueueAddIcon />
                 </button>
                 <button type="button" className="ghost-button" onClick={() => removeFavoriteTrack(favoriteGroupId, item.bvid)}>
                   移除
@@ -946,13 +1049,8 @@ export default function App() {
               ) : null}
             </div>
             {searchError ? <div className="message error">{searchError}</div> : null}
-            {favoriteMessage ? <div className="message success">{favoriteMessage}</div> : null}
             {renderCards(results)}
-            {hasMoreSearch ? (
-              <div className="load-more-row">
-                <button type="button" className="load-more-button" onClick={loadMoreSearch} disabled={searchLoading}>{searchLoading ? "加载中..." : "加载更多"}</button>
-              </div>
-            ) : null}
+            {hasMoreSearch ? <div ref={searchLoadMoreRef} className="auto-load-trigger">{searchLoading ? "加载中..." : "继续下滑加载更多"}</div> : null}
           </section>
         ) : null}
 
@@ -1020,13 +1118,7 @@ export default function App() {
             ) : null}
             {dynamicView.error ? <div className="message error">{dynamicView.error}</div> : null}
             {authState.loggedIn ? renderCards(dynamicView.items) : null}
-            {authState.loggedIn && dynamicView.hasMore ? (
-              <div className="load-more-row">
-                <button type="button" className="load-more-button" onClick={loadMoreDynamics} disabled={dynamicView.loading}>
-                  {dynamicView.loading ? "加载中..." : "加载更多"}
-                </button>
-              </div>
-            ) : null}
+            {authState.loggedIn && dynamicView.hasMore ? <div ref={dynamicLoadMoreRef} className="auto-load-trigger">{dynamicView.loading ? "加载中..." : "继续下滑加载更多"}</div> : null}
           </section>
         ) : null}
 
@@ -1122,11 +1214,7 @@ export default function App() {
             </div>
             {upView.error ? <div className="message error">{upView.error}</div> : null}
             {renderCards(upView.items)}
-            {upView.hasMore ? (
-              <div className="load-more-row">
-                <button type="button" className="load-more-button" onClick={loadMoreUpVideos} disabled={upView.loading}>{upView.loading ? "加载中..." : "加载更多"}</button>
-              </div>
-            ) : null}
+            {upView.hasMore ? <div ref={upLoadMoreRef} className="auto-load-trigger">{upView.loading ? "加载中..." : "继续下滑加载更多"}</div> : null}
           </section>
         ) : null}
 
@@ -1239,6 +1327,9 @@ export default function App() {
             </div>
             <div className="queue-drawer-actions">
               <span className="queue-count">{queueItems.length} 首</span>
+              <button type="button" className="ghost-button small" onClick={clearQueue} disabled={!queueItems.length}>
+                全部移除
+              </button>
               <button type="button" className="ghost-button small" onClick={() => setQueueVisible(false)}>
                 收起
               </button>
@@ -1392,11 +1483,13 @@ export default function App() {
                 <SpeedIcon />
               </button>
               <div className={`player-tool-popover${activePlayerTool === "speed" ? " visible" : ""}`}>
-                <span className="label">倍速</span>
-                <div className="vertical-track-wrap">
-                  <VerticalSlider min={0.5} max={3} step={0.1} value={playbackRate} onChange={updatePlaybackRate} ariaLabel="倍速调节" />
+                <div className="tool-wheel-area" onWheel={(event) => handleToolWheel("speed", event)} onWheelCapture={(event) => handleToolWheel("speed", event)}>
+                  <span className="label">倍速</span>
+                  <div className="vertical-track-wrap">
+                    <VerticalSlider min={0.5} max={3} step={0.1} value={playbackRate} onChange={updatePlaybackRate} ariaLabel="倍速调节" />
+                  </div>
+                  <strong>{playbackRate.toFixed(1)}x</strong>
                 </div>
-                <strong>{playbackRate.toFixed(1)}x</strong>
               </div>
             </div>
             <div className={`player-tool${activePlayerTool === "volume" ? " active" : ""}`}>
@@ -1410,16 +1503,19 @@ export default function App() {
                 <VolumeIcon />
               </button>
               <div className={`player-tool-popover${activePlayerTool === "volume" ? " visible" : ""}`}>
-                <span className="label">音量</span>
-                <div className="vertical-track-wrap">
-                  <VerticalSlider min={0} max={1} step={0.01} value={volume} onChange={setVolume} ariaLabel="音量调节" />
+                <div className="tool-wheel-area" onWheel={(event) => handleToolWheel("volume", event)} onWheelCapture={(event) => handleToolWheel("volume", event)}>
+                  <span className="label">音量</span>
+                  <div className="vertical-track-wrap">
+                    <VerticalSlider min={0} max={1} step={0.01} value={volume} onChange={setVolume} ariaLabel="音量调节" />
+                  </div>
+                  <strong>{Math.round(volume * 100)}%</strong>
                 </div>
-                <strong>{Math.round(volume * 100)}%</strong>
               </div>
             </div>
           </div>
         </div>
       </footer>
+      {toastMessage ? <div className="app-toast">{toastMessage}</div> : null}
     </div>
   );
 }

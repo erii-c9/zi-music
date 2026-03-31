@@ -50,6 +50,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   font-size: var(--app-font-size);
+  scrollbar-gutter: stable;
 }
 
 button,
@@ -542,8 +543,11 @@ button {
 }
 
 .queue-item.active {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(17, 24, 39, 0.22);
+  box-shadow:
+    inset 3px 0 0 rgba(17, 24, 39, 0.95),
+    0 12px 28px rgba(15, 23, 42, 0.08);
 }
 
 .queue-handle,
@@ -775,6 +779,50 @@ button {
   flex-wrap: wrap;
 }
 
+.icon-action-button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  position: relative;
+}
+
+.icon-action-button::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(4px);
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  z-index: 2;
+}
+
+.icon-action-button:hover::after,
+.icon-action-button:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .ghost-button {
   min-height: 38px;
   padding: 0 12px;
@@ -797,6 +845,16 @@ button {
   display: flex;
   justify-content: center;
   margin-top: 20px;
+}
+
+.auto-load-trigger {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 52px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .load-more-button {
@@ -1181,6 +1239,8 @@ button {
 
 .player-tool {
   position: relative;
+  display: flex;
+  justify-content: center;
 }
 
 .player-tool-trigger {
@@ -1199,7 +1259,8 @@ button {
 
 .player-tool-popover {
   position: absolute;
-  right: 0;
+  left: 50%;
+  right: auto;
   bottom: calc(100% + 12px);
   display: flex;
   flex-direction: column;
@@ -1216,7 +1277,7 @@ button {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(8px);
+  transform: translateX(-50%) translateY(8px);
   transition:
     opacity 160ms ease,
     transform 160ms ease,
@@ -1228,7 +1289,14 @@ button {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
+}
+
+.tool-wheel-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
 .vertical-track-wrap {
@@ -1296,6 +1364,22 @@ button {
 
 .player-mode-label {
   white-space: nowrap;
+}
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 124px;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.94);
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  z-index: 70;
+  text-align: center;
 }
 
 .modal-backdrop {
@@ -1476,6 +1560,10 @@ button {
     bottom: 112px;
   }
 
+  .app-toast {
+    bottom: 144px;
+  }
+
   .player-bar {
     left: 8px;
     right: 8px;
@@ -1525,8 +1613,12 @@ button {
   }
 
   .player-tool-popover {
-    right: auto;
     left: 0;
+    transform: translateY(8px);
+  }
+
+  .player-tool-popover.visible {
+    transform: translateY(0);
   }
 
   .player-mode {

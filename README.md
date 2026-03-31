@@ -1,322 +1,101 @@
 # Zi Music
 
-一个基于 Bilibili 歌曲视频资源的极简听歌应用 MVP，现已切换为 `Tauri + React` 桌面方案。
+一个基于 Bilibili 资源的极简桌面播放器。
 
-## 1. 产品功能拆解
+它更像一个安静的声音工具，而不是视频网站，也不是传统音乐平台。
 
-### 核心功能
+## 它是为了解决什么问题
 
-- 关键词搜索：支持歌曲名、歌手名、专辑名、风格词。
-- 搜索结果列表：只展示标题、UP 主、时长、播放量、BV 号。
-- 纯音频播放：点击后进入播放，不展示视频画面。
-- 基础播放器：播放/暂停、进度条、音量、上一首/下一首。
+我想做这样一个软件，是因为很多时候，我们只是想听点东西。
 
-### 非目标
+有时候是听歌，但常见音乐 App 需要会员，或者版权不全；而 Bilibili 上其实有大量音乐资源。
 
-- 不做登录注册。
-- 不做评论、弹幕、社交。
-- 不做封面墙、推荐流、复杂歌单。
-- 不做下载。
-- 不做歌词。
+有时候不只是听歌，还想听一些只需要声音的内容，比如评书、相声、热点时事、解说类视频。
 
-## 2. 页面结构设计
+还有一些内容，本来就不在普通音乐 App 里，比如 UP 主投稿、自制翻唱、现场版、冷门版本。
 
-### 页面 1：主页面
+另外，在工作或学习的时候，直接打开 Bilibili 网站会比较显眼，页面也太复杂；而我更想要的是一个打开就能听、界面干净、不打扰注意力的软件。
 
-- 顶部：应用名、简短说明。
-- 搜索区：输入框、搜索按钮。
-- 结果区：纯文本列表。
-- 底部：固定播放器。
+## Zi Music 想做成什么样
 
-### 页面交互
+Zi Music 想做成一个：
 
-- 输入关键词后点击搜索。
-- 列表项点击后立即开始播放。
-- 当前播放项高亮。
-- 上一首/下一首在当前搜索结果集内切换。
+- 轻量的声音入口
+- 干净的桌面播放器
+- 可以把 Bilibili 当作音频内容库来使用的工具
 
-## 3. 技术架构图（文字）
+它不强调推荐流，也不强调花哨界面。
 
-- 前端：React + Vite
-  - 负责搜索输入、结果列表、播放器 UI。
-  - 在浏览器模式下通过 Vite 代理访问 `/api/*`。
-  - 在桌面模式下直接访问本地 `http://127.0.0.1:3001/api/*`。
-- 桌面端：Tauri
-  - 负责窗口管理、资源打包、生成 Windows 安装包。
-- 本地后端：Rust + Axum
-  - 负责调用 Bilibili Web 接口。
-  - 负责 WBI 签名。
-  - 负责拿到视频 cid 和 playurl。
-  - 负责把音频流代理成本地 `/api/stream/:bvid`。
-- Bilibili：
-  - 搜索接口返回视频结果。
-  - view 接口返回分 P/cid 信息。
-  - playurl 接口返回 DASH 音频流地址。
-
-请求链路：
-
-1. 前端调用 `/api/search?q=关键词`
-2. 后端请求 Bilibili 搜索接口并清洗数据
-3. 用户点击结果，前端设置音频源为 `/api/stream/:bvid`
-4. 后端请求 Bilibili playurl，选出音频流 URL
-5. 后端代理音频字节流给浏览器播放
-
-## 4. 前后端技术栈建议
-
-### 前端
-
-- React
-- Vite
-- 原生 CSS
-- HTMLAudioElement
-
-原因：启动快、依赖少、做 MVP 成本最低。
-
-### 桌面端 / 本地后端
-
-- Tauri
-- Rust
-- Axum
-- Reqwest
-
-原因：相对 Electron 更轻，生成的 Windows 安装包体积更小，更适合“小而美的软件”目标。
-
-## 5. 如何搜索 Bilibili 视频
-
-MVP 方案使用 Bilibili Web 搜索接口：
-
-- 先请求 `https://api.bilibili.com/x/web-interface/nav`
-- 从返回值中取 `wbi_img.img_url` 和 `sub_url`
-- 根据 WBI 规则生成签名
-- 再调用 `x/web-interface/wbi/search/type`
-
-搜索参数核心字段：
-
-- `keyword`
-- `search_type=video`
-- `page`
-
-## 6. 如何获取可播放的音频流
-
-MVP 链路：
-
-1. 调 `x/web-interface/view?bvid=xxx` 获取 `cid`
-2. 调 `x/player/playurl?bvid=xxx&cid=xxx&fnval=16&qn=64`
-3. 从 `dash.audio` 中取第一条或最高带宽音频流
-4. 后端代理这个音频 URL 给前端
-
-## 7. 如何只播放音频不显示视频
-
-- 前端只创建 `<audio>` 元素，不渲染 `<video>`。
-- 后端返回的是音频流代理地址，不给前端视频地址。
-- 播放器 UI 只保留音乐控制条。
-
-## 8. 跨域、接口限制、签名与解析问题
-
-### 跨域
-
-- 浏览器不直接请求 Bilibili API。
-- 全部走本站后端 `/api/*`，规避前端跨域。
-
-### 接口限制
-
-- 搜索接口需要 WBI 签名。
-- 音频地址会过期，所以不能长期缓存为静态 URL。
-
-### 解析问题
-
-- Bilibili 返回的标题可能带 HTML 高亮标签，后端已清洗。
-- 音频流一般是 DASH `audio/mp4`，浏览器可直接播放。
-
-### Referer / Header
-
-- 代理流时后端补上常见浏览器 `User-Agent` 与 `Referer`。
-
-## 9. 核心接口设计
-
-### `GET /api/health`
-
-返回服务健康状态。
-
-### `GET /api/search?q=xxx&page=1`
-
-返回：
-
-```json
-{
-  "query": "周杰伦 稻香",
-  "page": 1,
-  "pageSize": 20,
-  "total": 1000,
-  "items": [
-    {
-      "id": "BV11k4y1G7WH",
-      "bvid": "BV11k4y1G7WH",
-      "aid": 743821456,
-      "title": "大爱这首卡点神曲《Teeth》！",
-      "uploader": "云端音乐铺",
-      "duration": "03:25",
-      "durationSeconds": 205,
-      "playCount": 5296251,
-      "description": "侵删~"
-    }
-  ]
-}
-```
-
-### `GET /api/tracks/:bvid`
-
-返回单条可播放信息：
-
-```json
-{
-  "bvid": "BV11k4y1G7WH",
-  "cid": 1209336843,
-  "title": "大爱这首卡点神曲《Teeth》！",
-  "uploader": "云端音乐铺",
-  "durationSeconds": 205,
-  "streamUrl": "/api/stream/BV11k4y1G7WH"
-}
-```
-
-### `GET /api/stream/:bvid`
-
-- 支持 `Range` 请求
-- 返回 `audio/mp4`
-- 用于 `<audio>` 播放
-
-## 10. 数据结构设计
-
-### SearchItem
-
-```ts
-type SearchItem = {
-  id: string;
-  bvid: string;
-  aid: number;
-  title: string;
-  uploader: string;
-  duration: string;
-  durationSeconds: number;
-  playCount: number;
-  description: string;
-};
-```
-
-### Track
-
-```ts
-type Track = {
-  bvid: string;
-  cid: number;
-  title: string;
-  uploader: string;
-  durationSeconds: number;
-  audioUrl?: string;
-  streamUrl: string;
-};
-```
-
-## 11. 开发步骤拆解
-
-1. 初始化前后端脚手架。
-2. 打通 Bilibili 搜索接口。
-3. 打通 view + playurl 获取音频信息。
-4. 实现音频代理流。
-5. 完成极简搜索页和播放器。
-6. 补基础错误处理与空状态。
-7. 做本地联调与构建验证。
-
-## 12. MVP 优先级
-
-### P0
+它更关注的是：
 
 - 搜索
-- 列表展示
-- 点击播放
-- 播放/暂停
-- 进度条
-- 音量
-
-### P1
-
-- 上一首/下一首
-- 当前播放高亮
-- 简单的播放状态提示
-
-### P2
-
-- 历史记录
+- 播放
 - 收藏
-- 简单歌词
-- 更智能的排序策略
+- 队列
+- 最近播放
+- 安静地使用
 
-## 13. 风险点与规避建议
+## 你可以用它做什么
 
-### 平台规则 / 合规风险
+- 搜索 Bilibili 上的视频内容
+- 只播放音频，不显示视频画面
+- 把喜欢的内容加入播放列表或收藏夹
+- 查看最近播放
+- 查看关注动态里的新视频
+- 听一些普通音乐 App 没有的内容
 
-- 该产品依赖 Bilibili 非官方公开 Web 接口，接口规则可能变化。
-- 歌曲内容可能涉及版权，做“聚合播放”存在版权与平台条款风险。
-- 若公开商用，风险显著高于个人学习或内部原型验证。
+## 适合哪些场景
 
-建议：
+- 工作时想低调地听歌
+- 学习时想放一些只听声音的内容
+- 想听 Bilibili 上更杂、更丰富的投稿资源
+- 不想面对视频网站那种花花绿绿的界面
 
-- 明确仅作学习 / 内部原型验证。
-- 不做下载、不做缓存分发、不做批量镜像。
-- 增加“内容来源于 Bilibili，仅作索引与播放代理”的声明。
-- 上线前补法务与平台条款评估。
+## 产品特点
 
-### 技术风险
+- 极简界面
+- 桌面应用形态
+- 以音频播放为核心
+- 支持账号增强
+- 安装包轻量，打开直接可用
 
-- WBI 算法和接口字段可能调整。
-- 某些视频可能无音频流、需登录、需会员或被风控。
-- 音频直链有时效，必须动态获取。
+## 技术方案
 
-建议：
+- 前端：React + Vite
+- 桌面端：Tauri
+- 本地后端：Rust + Axum
 
-- 后端集中封装 BilibiliProvider，便于统一维护。
-- 对错误结果做降级提示。
-- 保持代理层无状态，方便后续替换数据源。
+这个项目现在的方向很明确：
 
-## 14. 可扩展架构建议
+小而美，够轻，够安静，够实用。
 
-后续把当前后端抽象成 Provider 模式：
+## 快速开始
 
-- `providers/bilibili.js`
-- `providers/youtube.js`
-- `providers/local.js`
-
-统一接口：
-
-- `search(query, page)`
-- `getTrack(bvid)`
-- `getAudioStream(bvid, range)`
-
-这样未来即使 Bilibili 接口变化，也只改 Provider 层。
-
-## 15. 运行方式
+安装依赖：
 
 ```bash
 npm install
 npm run install:all
 ```
 
-开发环境：
+启动开发版：
 
-- 浏览器模式：`npm run dev:web`
-- 桌面模式：`npm run dev:app`
+```bash
+npm run dev:app
+```
 
-桌面安装包构建：
+打包安装包：
 
 ```bash
 npm run build:app
 ```
 
-Windows 安装包输出：
+当前安装包输出位置：
 
-- `src-tauri/target/release/bundle/nsis/Zi Music_0.1.0_x64-setup.exe`
+- `src-tauri/target/release/bundle/nsis/Zi Music_0.1.1_x64-setup.exe`
 
-当前构建结果参考：
+## 提醒
 
-- Tauri 主程序 `zi-music.exe` 约 `12 MB`
-- Windows 安装包约 `3 MB`
+- 这个项目依赖 Bilibili 的公开 Web 能力与页面接口，接口规则可能变化。
+- 某些内容可能受版权、登录状态或风控影响，不能保证始终可播放。
+- 当前更适合作为个人使用、学习和原型项目。
