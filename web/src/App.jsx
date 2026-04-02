@@ -335,7 +335,7 @@ export default function App() {
   const [searchError, setSearchError] = useState("");
   const [historyVisible, setHistoryVisible] = useState(false);
   const [searchHistory, setSearchHistory] = useState(getSearchHistory);
-  const [upView, setUpView] = useState({ mid: null, uploader: "", items: [], page: 1, hasMore: false, loading: false, error: "", order: "pubdate" });
+  const [upView, setUpView] = useState({ mid: null, uploader: "", items: [], page: 1, hasMore: false, loading: false, error: "", order: "pubdate", keyword: "" });
   const [dynamicView, setDynamicView] = useState({ items: [], offset: "", hasMore: false, loading: false, error: "", initialized: false });
   const [favoriteGroups, setFavoriteGroupsState] = useState(getFavoriteGroups);
   const [selectedGroupId, setSelectedGroupId] = useState("");
@@ -458,7 +458,7 @@ export default function App() {
     }, { rootMargin: "240px 0px" });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [activeTab, upView.hasMore, upView.loading, upView.page, upView.mid, upView.order]);
+  }, [activeTab, upView.hasMore, upView.loading, upView.page, upView.mid, upView.order, upView.keyword]);
   useEffect(() => {
     if (activeTab !== "dynamic" || !dynamicView.hasMore) return undefined;
     const node = dynamicLoadMoreRef.current;
@@ -627,11 +627,17 @@ export default function App() {
     if (!searchLoading && hasMoreSearch) await searchMusic(undefined, keyword, searchPage + 1, true);
   }
 
-  async function openUploader(mid, uploader, page = 1, append = false, order = "pubdate") {
+  async function openUploader(mid, uploader, page = 1, append = false, order = "pubdate", keyword = "") {
     if (!mid) return;
-    setUpView((current) => ({ ...current, mid, uploader, loading: true, error: "", order }));
+    const normalizedKeyword = keyword.trim();
+    setUpView((current) => ({ ...current, mid, uploader, loading: true, error: "", order, keyword: normalizedKeyword }));
     try {
-      const response = await fetch(apiUrl(`/api/up/${mid}/videos?page=${page}&order=${encodeURIComponent(order)}`));
+      const query = new URLSearchParams({
+        page: String(page),
+        order
+      });
+      if (normalizedKeyword) query.set("keyword", normalizedKeyword);
+      const response = await fetch(apiUrl(`/api/up/${mid}/videos?${query.toString()}`));
       const payload = await readJsonSafely(response);
       if (!response.ok) throw new Error(payload?.detail || payload?.error || "加载 UP 投稿失败");
       if (!payload || !Array.isArray(payload.items)) throw new Error("UP 投稿接口返回了非预期数据");
@@ -644,7 +650,8 @@ export default function App() {
         hasMore: payload.items.length > 0 && page < (payload.pageCount || Number.MAX_SAFE_INTEGER),
         loading: false,
         error: "",
-        order
+        order,
+        keyword: normalizedKeyword
       }));
       setActiveTab("up");
     } catch (error) {
@@ -653,7 +660,7 @@ export default function App() {
   }
 
   async function loadMoreUpVideos() {
-    if (upView.mid && !upView.loading && upView.hasMore) await openUploader(upView.mid, upView.uploader, upView.page + 1, true, upView.order);
+    if (upView.mid && !upView.loading && upView.hasMore) await openUploader(upView.mid, upView.uploader, upView.page + 1, true, upView.order, upView.keyword);
   }
 
   async function loadDynamicFeed(nextOffset = "", append = false) {
@@ -1195,7 +1202,7 @@ export default function App() {
                   <button
                     type="button"
                     className={`ghost-button small${upView.order === "pubdate" ? " active-chip" : ""}`}
-                    onClick={() => void openUploader(upView.mid, upView.uploader, 1, false, "pubdate")}
+                    onClick={() => void openUploader(upView.mid, upView.uploader, 1, false, "pubdate", upView.keyword)}
                     disabled={upView.loading}
                   >
                     最新发布
@@ -1203,7 +1210,7 @@ export default function App() {
                   <button
                     type="button"
                     className={`ghost-button small${upView.order === "click" ? " active-chip" : ""}`}
-                    onClick={() => void openUploader(upView.mid, upView.uploader, 1, false, "click")}
+                    onClick={() => void openUploader(upView.mid, upView.uploader, 1, false, "click", upView.keyword)}
                     disabled={upView.loading}
                   >
                     最多播放
@@ -1212,6 +1219,20 @@ export default function App() {
                 <button type="button" className="ghost-button small" onClick={() => setActiveTab("search")}>返回搜索</button>
               </div>
             </div>
+            <form
+              className="search-bar slim up-search-bar"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void openUploader(upView.mid, upView.uploader, 1, false, upView.order, upView.keyword);
+              }}
+            >
+              <input
+                type="text"
+                value={upView.keyword}
+                placeholder="在该 UP 投稿中搜索"
+                onChange={(event) => setUpView((current) => ({ ...current, keyword: event.target.value }))}
+              />
+            </form>
             {upView.error ? <div className="message error">{upView.error}</div> : null}
             {renderCards(upView.items)}
             {upView.hasMore ? <div ref={upLoadMoreRef} className="auto-load-trigger">{upView.loading ? "加载中..." : "继续下滑加载更多"}</div> : null}

@@ -133,6 +133,7 @@ struct SearchParams {
 struct UpVideosParams {
     page: Option<u32>,
     order: Option<String>,
+    keyword: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -466,7 +467,8 @@ async fn up_videos(
 ) -> Result<Json<SearchResponse>, ApiError> {
     let page = params.page.unwrap_or(1);
     let order = params.order.unwrap_or_else(|| "pubdate".to_string());
-    let result = fetch_up_videos(&state, mid, page, &order).await?;
+    let keyword = params.keyword.unwrap_or_default();
+    let result = fetch_up_videos(&state, mid, page, &order, &keyword).await?;
     Ok(Json(result))
 }
 
@@ -561,22 +563,23 @@ async fn fetch_up_videos(
     mid: u64,
     page: u32,
     order: &str,
+    keyword: &str,
 ) -> Result<SearchResponse, ApiError> {
     let normalized_order = match order {
         "click" => "click",
         _ => "pubdate",
     };
     let (img_key, sub_key) = get_wbi_keys(state).await?;
-    let signed_query = sign_wbi(
-        vec![
-            ("mid".to_string(), mid.to_string()),
-            ("pn".to_string(), page.to_string()),
-            ("ps".to_string(), "20".to_string()),
-            ("order".to_string(), normalized_order.to_string()),
-        ],
-        &img_key,
-        &sub_key,
-    );
+    let mut params = vec![
+        ("mid".to_string(), mid.to_string()),
+        ("pn".to_string(), page.to_string()),
+        ("ps".to_string(), "20".to_string()),
+        ("order".to_string(), normalized_order.to_string()),
+    ];
+    if !keyword.trim().is_empty() {
+        params.push(("keyword".to_string(), keyword.trim().to_string()));
+    }
+    let signed_query = sign_wbi(params, &img_key, &sub_key);
     let url = format!("https://api.bilibili.com/x/space/wbi/arc/search?{signed_query}");
     let payload = fetch_json(state, &url).await?;
 
@@ -630,7 +633,11 @@ async fn fetch_up_videos(
     let total = page_data["count"].as_u64().unwrap_or(items.len() as u64) as usize;
 
     Ok(SearchResponse {
-        query: mid.to_string(),
+        query: if keyword.trim().is_empty() {
+            mid.to_string()
+        } else {
+            keyword.trim().to_string()
+        },
         page: page_data["pn"].as_u64().unwrap_or(page as u64) as u32,
         page_size,
         page_count: compute_page_count(total, page_size),
